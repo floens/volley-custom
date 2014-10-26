@@ -22,6 +22,7 @@ import com.android.volley.Cache;
 import com.android.volley.VolleyLog;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
@@ -63,6 +64,8 @@ public class DiskBasedCache implements Cache {
 
     /** Magic number for current version of cache file format. */
     private static final int CACHE_MAGIC = 0x20140623;
+
+    private static final int DEFAULT_DISK_FILES_MAX = 250;
 
     /**
      * Constructs an instance of the DiskBasedCache at the specified directory.
@@ -113,7 +116,7 @@ public class DiskBasedCache implements Cache {
         File file = getFileForKey(key);
         CountingInputStream cis = null;
         try {
-            cis = new CountingInputStream(new FileInputStream(file));
+            cis = new CountingInputStream(new BufferedInputStream(new FileInputStream(file)));
             CacheHeader.readHeader(cis); // eat header
             byte[] data = streamToBytes(cis, (int) (file.length() - cis.bytesRead));
             return entry.toCacheEntry(data);
@@ -196,7 +199,7 @@ public class DiskBasedCache implements Cache {
         pruneIfNeeded(entry.data.length);
         File file = getFileForKey(key);
         try {
-            FileOutputStream fos = new FileOutputStream(file);
+            BufferedOutputStream fos = new BufferedOutputStream(new FileOutputStream(file));
             CacheHeader e = new CacheHeader(key, entry);
             boolean success = e.writeHeader(fos);
             if (!success) {
@@ -253,7 +256,7 @@ public class DiskBasedCache implements Cache {
      * @param neededSpace The amount of bytes we are trying to fit into the cache.
      */
     private void pruneIfNeeded(int neededSpace) {
-        if ((mTotalSize + neededSpace) < mMaxCacheSizeInBytes) {
+        if (mEntries.size() <= DEFAULT_DISK_FILES_MAX && (mTotalSize + neededSpace) < mMaxCacheSizeInBytes) {
             return;
         }
         if (VolleyLog.DEBUG) {
@@ -278,7 +281,7 @@ public class DiskBasedCache implements Cache {
             iterator.remove();
             prunedFiles++;
 
-            if ((mTotalSize + neededSpace) < mMaxCacheSizeInBytes * HYSTERESIS_FACTOR) {
+            if (mEntries.size() < DEFAULT_DISK_FILES_MAX * HYSTERESIS_FACTOR && (mTotalSize + neededSpace) < mMaxCacheSizeInBytes * HYSTERESIS_FACTOR) {
                 break;
             }
         }
